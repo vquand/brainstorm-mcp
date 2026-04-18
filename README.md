@@ -15,6 +15,7 @@ An MCP (Model Context Protocol) server that spawns a lightweight, resource-effic
 ### Features
 
 - **Multi-Session Support**: Each AI agent session gets its own URL (`localhost:{port}/{sessionid}`) with tab names reflecting working directory for easy distinction
+- **Shared Single Install Across Agents**: One local clone and one Python environment can be reused by Claude, Codex, and other MCP-compatible agents at the same time, so you install once per machine instead of once per agent
 - **Rich Content Rendering**:
   - Mermaid diagrams for graphs, flowcharts, and visualizations
   - Tailwind CSS-styled UI for brainstorming options and interfaces
@@ -43,15 +44,22 @@ An MCP (Model Context Protocol) server that spawns a lightweight, resource-effic
 │   ├── app.py            # Flask/FastAPI server
 │   ├── templates/        # HTML templates
 │   └── static/           # CSS, JS, assets
-├── sessions/             # Session state storage
-├── plans/                # User-saved markdown plans (optional)
 └── requirements.txt      # Dependencies
+```
+
+Runtime data is stored outside the repository by default under `~/.mcp/brainstorm-mcp/`:
+
+```text
+~/.mcp/brainstorm-mcp/
+├── sessions/             # Session state storage
+│   └── assets/           # Uploaded or pasted image data
+└── plans/                # User-saved markdown plans
 ```
 
 ### Session Management
 
 - Each session gets a unique `sessionid` (UUID or similar)
-- Session state stored in memory or lightweight persistent storage
+- Session state stored in lightweight persistent storage under the user's `~/.mcp/brainstorm-mcp/` directory by default
 - URLs: `localhost:PORT/{sessionid}`
 - Tab titles reflect the working directory (`pwd`) of the AI agent terminal
 
@@ -70,6 +78,18 @@ An MCP (Model Context Protocol) server that spawns a lightweight, resource-effic
 ### Prerequisites
 - Python 3.9+
 - MCP client (Claude or compatible AI agent)
+
+### Full Installation Guide
+
+For complete installation instructions, including:
+
+- using an existing local clone
+- cloning into the recommended shared MCP server location
+- connecting the server to Codex
+- connecting the server to Claude Code
+- reusing one install across multiple agents
+
+See [INSTALL.md](INSTALL.md).
 
 ### Setup
 ```bash
@@ -108,6 +128,7 @@ python-dotenv
 9. **User**: Returns to AI agent and says "response submitted"
 10. **AI Agent**: Retrieves submission via MCP → Continues planning with the user's input
 11. **AI Agent** (optional): "Should I save this plan? Suggested location: `plans/feature-architecture.md`"
+   Default saved location on disk: `~/.mcp/brainstorm-mcp/plans/feature-architecture.md`
 
 ## MCP Tool Specification
 
