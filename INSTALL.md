@@ -19,6 +19,8 @@ If needed, override the location with:
 export BRAINSTORM_DATA_DIR="/absolute/path/to/custom-brainstorm-data"
 ```
 
+The UI server is intentionally loopback-only. If you set `BRAINSTORM_HOST`, keep it on `127.0.0.1` or `localhost`; non-local bind addresses are rejected at startup.
+
 ## Installation Model
 
 This project is intended to be installed once per machine, not once per agent.

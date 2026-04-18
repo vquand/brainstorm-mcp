@@ -33,6 +33,7 @@ An MCP (Model Context Protocol) server that spawns a lightweight, resource-effic
   - Clipboard paste-in capability
   
 - **Resource Efficient**: Lightweight Python server designed for single-user operation
+- **Loopback Only**: The HTTP UI is hard-limited to loopback addresses and rejects non-local clients
 
 ## Architecture
 

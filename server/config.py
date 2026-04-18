@@ -2,12 +2,25 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from pathlib import Path
+import ipaddress
 import os
 import secrets
 
 
 def _default_data_root() -> Path:
     return Path.home() / ".mcp" / "brainstorm-mcp"
+
+
+def is_loopback_host(host: str) -> bool:
+    normalized = host.strip().lower()
+    if normalized == "localhost":
+        return True
+    if normalized.startswith("[") and normalized.endswith("]"):
+        normalized = normalized[1:-1]
+    try:
+        return ipaddress.ip_address(normalized).is_loopback
+    except ValueError:
+        return False
 
 
 @dataclass
@@ -19,6 +32,12 @@ class Settings:
     http_admin_token: str = os.getenv("BRAINSTORM_HTTP_ADMIN_TOKEN", secrets.token_urlsafe(24))
     repo_root: Path = Path(__file__).resolve().parent.parent
     data_root: Path = Path(os.getenv("BRAINSTORM_DATA_DIR", str(_default_data_root())))
+
+    def __post_init__(self) -> None:
+        if not is_loopback_host(self.host):
+            raise ValueError(
+                "BRAINSTORM_HOST must stay on loopback; use 127.0.0.1 or localhost"
+            )
 
     @property
     def sessions_dir(self) -> Path:
