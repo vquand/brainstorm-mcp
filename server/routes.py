@@ -86,6 +86,16 @@ def build_router(store: SessionStore, renderer: ContentRenderer) -> APIRouter:
             f'<option value="{html.escape(section_id)}">{html.escape(section_id)}</option>'
             for section_id in rendered.section_ids
         )
+        questions_markup = (
+            '<ol class="question-list">'
+            + "".join(
+                f'<li><button type="button" class="question-item" data-question-index="{index}">'
+                f"{html.escape(question)}"
+                "</button></li>"
+                for index, question in enumerate(session.content.questions)
+            )
+            + "</ol>"
+        ) if session.content.questions else ""
         page = f"""<!doctype html>
 <html lang="en">
   <head>
@@ -93,7 +103,6 @@ def build_router(store: SessionStore, renderer: ContentRenderer) -> APIRouter:
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <meta name="referrer" content="no-referrer" />
     <title>{html.escape(working_dir_name)} · {html.escape(title)}</title>
-    <script src="https://cdn.tailwindcss.com"></script>
     <script type="module" src="/static/app.js"></script>
     <script type="module">
       import mermaid from "https://cdn.jsdelivr.net/npm/mermaid@11/dist/mermaid.esm.min.mjs";
@@ -104,64 +113,111 @@ def build_router(store: SessionStore, renderer: ContentRenderer) -> APIRouter:
   <body class="page-shell">
     <main class="page-grid" data-session-id="{html.escape(session.session_id)}" data-session-token="{html.escape(access_token)}">
       <section class="panel hero-panel">
-        <p class="eyebrow">Brainstorm Session</p>
-        <h1>{html.escape(title)}</h1>
+        <div class="hero-head">
+          <div>
+            <p class="eyebrow">Brainstorm Session</p>
+            <h1>{html.escape(title)}</h1>
+          </div>
+          <span class="status-pill" id="status-chip" data-status="{html.escape(session.status)}">{html.escape(session.status)}</span>
+        </div>
         <p class="prompt">{html.escape(session.content.prompt)}</p>
         <dl class="session-meta">
-          <div><dt>Session</dt><dd>{html.escape(session.session_id)}</dd></div>
-          <div><dt>Status</dt><dd id="status-chip">{html.escape(session.status)}</dd></div>
+          <div><dt>Session</dt><dd class="mono">{html.escape(session.session_id)}</dd></div>
           <div><dt>Workspace</dt><dd>{html.escape(working_dir_name)}</dd></div>
         </dl>
       </section>
 
       <section class="panel content-panel">
         <div class="panel-header">
-          <h2>Workspace</h2>
-          <p>Rendered content supports markdown, mermaid, and trusted HTML.</p>
+          <div>
+            <h2>Workspace</h2>
+            <p class="muted">Click <strong>Pick element</strong> and tap any part of the rendered content to pin a comment to it.</p>
+          </div>
+          <button type="button" id="picker-toggle" class="ghost-button" aria-pressed="false" title="Hold Shift-Esc to exit picker mode">
+            <svg class="icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M3 3l7 18 2.5-7L20 11z" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round"/></svg>
+            <span>Pick element</span>
+          </button>
         </div>
-        <div class="rendered-content">{rendered.html}</div>
+        <div id="rendered-content" class="rendered-content" data-picker-root>{rendered.html}</div>
+        <div id="picker-overlay" class="picker-overlay" aria-hidden="true"></div>
       </section>
 
-      <section class="panel interaction-panel">
-        <div class="panel-header">
-          <h2>Selections</h2>
-          <p>Choose one or more options, then add comments or images before submitting.</p>
-        </div>
-        <div id="option-list" class="option-list">{option_markup}</div>
-        <div id="selected-options" class="selected-options"></div>
-
-        <div class="field-group">
-          <label for="comment-section">Comment section</label>
-          <select id="comment-section">
-            <option value="">General</option>
-            {comment_section_options}
-          </select>
-        </div>
-        <div class="field-group">
-          <label for="comment-text">Comment</label>
-          <textarea id="comment-text" rows="4" placeholder="Add implementation notes, constraints, or tradeoffs."></textarea>
-          <button type="button" id="add-comment" class="secondary-button">Add Comment</button>
-        </div>
-        <div id="comment-list" class="stack-list"></div>
-
-        <div class="field-group">
-          <label for="image-url">Image URL</label>
-          <input id="image-url" type="url" placeholder="https://example.com/reference.png" />
-          <button type="button" id="add-image-url" class="secondary-button">Add URL</button>
-        </div>
-        <div class="field-group">
-          <label for="image-file">Image File</label>
-          <input id="image-file" type="file" accept="image/*" />
-          <p class="muted">Files are captured client-side as base64 to avoid multipart dependencies.</p>
-        </div>
-        <div id="image-list" class="stack-list"></div>
-
-        <div class="action-row">
-          <button type="button" id="submit-session" class="primary-button">Submit</button>
-          <p id="submit-feedback" class="muted"></p>
-        </div>
-      </section>
     </main>
+
+    <button type="button" id="drawer-toggle" class="drawer-fab" aria-controls="feedback-drawer" aria-expanded="false" title="Open feedback panel (F)">
+      <svg class="icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M4 6h16M4 12h10M4 18h16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg>
+      <span>Feedback</span>
+      <span id="drawer-counter" class="drawer-counter" hidden>0</span>
+    </button>
+
+    <div id="drawer-scrim" class="drawer-scrim" hidden></div>
+
+    <aside id="feedback-drawer" class="feedback-drawer" aria-labelledby="drawer-title" aria-hidden="true">
+      <header class="drawer-header">
+        <div>
+          <h2 id="drawer-title">Feedback</h2>
+          <p class="muted">Choose options, pin comments to elements, attach references, then submit.</p>
+        </div>
+        <button type="button" id="drawer-close" class="icon-button" aria-label="Close feedback panel">
+          <svg class="icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M6 6l12 12M18 6L6 18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg>
+        </button>
+      </header>
+
+      <div class="drawer-body">
+        {('<div class="field-block"><p class="field-label">Open questions</p><p class="muted hint">Tap a question to answer it as a comment.</p>' + questions_markup + '</div>') if questions_markup else ''}
+
+        <div class="field-block">
+          <p class="field-label">Options</p>
+          <div id="option-list" class="option-list">{option_markup}</div>
+          <div id="selected-options" class="selected-options"></div>
+        </div>
+
+        <div class="field-block">
+          <p class="field-label">Comment</p>
+          <div id="active-target" class="active-target" hidden>
+            <svg class="icon" viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="4" fill="currentColor"/><circle cx="12" cy="12" r="9" fill="none" stroke="currentColor" stroke-width="1.5"/></svg>
+            <span class="active-target-text"></span>
+            <button type="button" id="clear-target" class="link-button" aria-label="Clear pinned element">Clear</button>
+          </div>
+          <div class="field-group">
+            <label class="visually-hidden" for="comment-section">Section</label>
+            <select id="comment-section" class="section-select">
+              <option value="">Unscoped (general)</option>
+              {comment_section_options}
+            </select>
+          </div>
+          <div class="field-group">
+            <textarea id="comment-text" rows="3" placeholder="Add a note, constraint, or question…"></textarea>
+            <div class="row-between">
+              <p class="hint muted">Tip: <kbd>P</kbd> picker, <kbd>F</kbd> drawer, <kbd>Esc</kbd> close.</p>
+              <button type="button" id="add-comment" class="secondary-button">Add comment</button>
+            </div>
+          </div>
+          <div id="comment-list" class="stack-list"></div>
+        </div>
+
+        <div class="field-block">
+          <p class="field-label">References</p>
+          <div class="field-group inline-field">
+            <input id="image-url" type="url" placeholder="https://example.com/reference.png" />
+            <button type="button" id="add-image-url" class="secondary-button">Add URL</button>
+          </div>
+          <div class="field-group">
+            <label class="file-drop" for="image-file">
+              <svg class="icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 16V4m0 0l-4 4m4-4l4 4M4 20h16" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></svg>
+              <span>Upload image or paste from clipboard</span>
+              <input id="image-file" type="file" accept="image/*" />
+            </label>
+          </div>
+          <div id="image-list" class="stack-list"></div>
+        </div>
+      </div>
+
+      <footer class="drawer-footer">
+        <button type="button" id="submit-session" class="primary-button">Submit feedback</button>
+        <p id="submit-feedback" class="muted" aria-live="polite"></p>
+      </footer>
+    </aside>
   </body>
 </html>
 """

@@ -23,6 +23,7 @@ class ContentType(str, Enum):
     mermaid = "mermaid"
     html = "html"
     markdown = "markdown"
+    wireframe = "wireframe"
 
 
 class SessionOption(BaseModel):
@@ -36,9 +37,18 @@ class UserSelection(BaseModel):
     label: Optional[str] = None
 
 
+class CommentTarget(BaseModel):
+    selector: str
+    tag: Optional[str] = None
+    snippet: Optional[str] = None
+    path: Optional[str] = None
+
+
 class UserComment(BaseModel):
     section_id: Optional[str] = None
     text: str
+    target: Optional[CommentTarget] = None
+    question_index: Optional[int] = None
 
 
 class UserImage(BaseModel):
@@ -56,6 +66,7 @@ class SessionContent(BaseModel):
     content_type: ContentType
     title: Optional[str] = None
     options: list[SessionOption] = Field(default_factory=list)
+    questions: list[str] = Field(default_factory=list)
 
 
 class SessionResponse(BaseModel):
@@ -95,6 +106,7 @@ class StartSessionInput(BaseModel):
     title: Optional[str] = None
     working_dir: Optional[str] = None
     options: list[Union[str, SessionOption]] = Field(default_factory=list)
+    questions: list[str] = Field(default_factory=list)
     metadata: dict[str, Any] = Field(default_factory=dict)
 
 

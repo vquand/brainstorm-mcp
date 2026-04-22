@@ -24,6 +24,9 @@ class ContentRenderer:
         elif session.content.content_type == ContentType.html:
             rendered_html = self._render_html(session.content.body)
             section_ids = self._extract_ids(rendered_html)
+        elif session.content.content_type == ContentType.wireframe:
+            rendered_html = self._render_wireframe(session.content.body)
+            section_ids = self._extract_ids(rendered_html)
         else:
             rendered_html, section_ids = self._render_markdown(session.content.body)
         return RenderedContent(title=title, html=rendered_html, section_ids=section_ids)
@@ -36,6 +39,30 @@ class ContentRenderer:
             f'<pre class="mermaid">{escaped}</pre>'
             "</section>"
         )
+
+    def _render_wireframe(self, source: str) -> str:
+        sanitized = self._sanitize_inline(source)
+        return (
+            '<section id="wireframe-1" class="content-card wireframe-card">'
+            '<div class="wireframe-stage">'
+            f"{sanitized}"
+            "</div>"
+            "</section>"
+        )
+
+    _SCRIPT_RE = re.compile(r"<script\b[^>]*>.*?</script\s*>", re.IGNORECASE | re.DOTALL)
+    _DANGEROUS_TAG_RE = re.compile(
+        r"</?\s*(iframe|object|embed|link|meta|base)\b[^>]*>", re.IGNORECASE
+    )
+    _EVENT_ATTR_RE = re.compile(r"\son[a-z]+\s*=\s*(\"[^\"]*\"|'[^']*'|[^\s>]+)", re.IGNORECASE)
+    _JS_URL_RE = re.compile(r"(href|src|xlink:href)\s*=\s*([\"'])\s*javascript:[^\"']*\2", re.IGNORECASE)
+
+    def _sanitize_inline(self, source: str) -> str:
+        cleaned = self._SCRIPT_RE.sub("", source)
+        cleaned = self._DANGEROUS_TAG_RE.sub("", cleaned)
+        cleaned = self._EVENT_ATTR_RE.sub("", cleaned)
+        cleaned = self._JS_URL_RE.sub(r"\1=\2#\2", cleaned)
+        return cleaned
 
     def _render_html(self, source: str) -> str:
         srcdoc = html.escape(source, quote=True)
