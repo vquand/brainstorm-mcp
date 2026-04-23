@@ -54,8 +54,15 @@ Runtime data is stored outside the repository by default under `~/.mcp/brainstor
 ~/.mcp/brainstorm-mcp/
 ├── sessions/             # Session state storage
 │   └── assets/           # Uploaded or pasted image data
-└── plans/                # User-saved markdown plans
+├── plans/                # User-saved markdown plans
+└── preferences/          # Brainstorm preferences (instructions to the AI)
+    ├── global.json       # Machine-wide defaults
+    └── projects/         # Per-project overrides, keyed by hashed absolute path
 ```
+
+Per-project preferences live under the central data root (never inside the
+project repo), so configuring a project never adds files to that project's
+working tree.
 
 ### Session Management
 
@@ -170,6 +177,41 @@ Terminates and cleans up a session.
 
 **Input**:
 - `session_id` (str): Session to close
+
+#### `set_brainstorm_preferences`
+Saves user-facing instructions that shape how the AI brainstorms. Any field left
+unset preserves the prior value, so you can update one field at a time.
+
+**Input**:
+- `scope` (str): `"global"` (machine-wide default) or `"project"` (override for
+  one project — requires `project_path`)
+- `project_path` (str, optional): Absolute path to the project. Required when
+  `scope="project"`. Used as the lookup key; the file itself is stored centrally
+  under `~/.mcp/brainstorm-mcp/preferences/projects/`.
+- `uiux_level` (str, optional): User's UI/UX skill level (free text). Suggested
+  values: `never_before`, `amateur`, `intermediate`, `expert`.
+- `uiux_style` (str, optional): Project's UI/UX style (free text). Examples:
+  `corporate internal tool`, `marketing-heavy landing page`,
+  `children education app`.
+- `questioning_style` (str, optional): How the AI should question the user.
+  Suggested values: `autonomous_review` (AI builds, user reviews with as few
+  questions as possible) or `collaborative_stepwise` (AI brainstorms step by
+  step, asking many questions to converge on the imagined UI).
+
+**Output**: Effective preferences after the merge (project overrides global,
+field by field), plus the source of each field.
+
+#### `get_brainstorm_preferences`
+Reads the effective brainstorm preferences. Project values override global
+values field by field.
+
+**Input**:
+- `project_path` (str, optional): Absolute project path to merge into the global
+  defaults. Omit to read globals only.
+
+**Output**: Same shape as `set_brainstorm_preferences`. The AI also receives
+this object inline on every `start_brainstorm_session` response, so it never
+needs to ask twice.
 
 ## Design Principles
 

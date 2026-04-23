@@ -23,6 +23,7 @@ from server.models import (
     StartSessionInput,
     StartSessionOutput,
 )
+from server.preferences_store import PreferencesStore
 from server.session_store import SessionStore
 
 
@@ -55,6 +56,7 @@ class BrainstormService:
     def __init__(self, settings: Optional[Settings] = None):
         self.settings = settings or get_settings()
         self.store = SessionStore(self.settings)
+        self.preferences = PreferencesStore(self.settings)
         self._lock = Lock()
         self._server_handle: Optional[ServerHandle] = None
 
@@ -96,6 +98,7 @@ class BrainstormService:
             url=f"{handle.base_url}/{session.session_id}?token={access_token}",
             port=handle.port,
             status=session.status,
+            preferences=self.preferences.get_effective(working_dir),
         ).model_dump(mode="json")
 
     def get_session_response(self, session_id: str) -> dict[str, Any]:
@@ -130,6 +133,40 @@ class BrainstormService:
     def close_session(self, session_id: str) -> dict[str, Any]:
         session = self.store.close_session(session_id)
         return {"session_id": session.session_id, "status": session.status}
+
+    def set_brainstorm_preferences(
+        self,
+        *,
+        scope: str,
+        project_path: Optional[str] = None,
+        uiux_level: Optional[str] = None,
+        uiux_style: Optional[str] = None,
+        questioning_style: Optional[str] = None,
+    ) -> dict[str, Any]:
+        if scope == "global":
+            self.preferences.set_global(
+                uiux_level=uiux_level,
+                uiux_style=uiux_style,
+                questioning_style=questioning_style,
+            )
+        elif scope == "project":
+            if not project_path:
+                raise ValueError("project_path is required when scope is 'project'")
+            self.preferences.set_project(
+                project_path,
+                uiux_level=uiux_level,
+                uiux_style=uiux_style,
+                questioning_style=questioning_style,
+            )
+        else:
+            raise ValueError("scope must be 'global' or 'project'")
+        return self.preferences.get_effective(project_path).model_dump(mode="json")
+
+    def get_brainstorm_preferences(
+        self,
+        project_path: Optional[str] = None,
+    ) -> dict[str, Any]:
+        return self.preferences.get_effective(project_path).model_dump(mode="json")
 
     def save_plan(
         self,
@@ -298,6 +335,10 @@ class MinimalMCPServer:
         if method == "save_plan":
             path = self.service.save_plan(**params)
             return {"path": str(path)}
+        if method == "set_brainstorm_preferences":
+            return self.service.set_brainstorm_preferences(**params)
+        if method == "get_brainstorm_preferences":
+            return self.service.get_brainstorm_preferences(**params)
         raise ValueError(f"Unknown method: {method}")
 
     def _handle_tool_call(self, request_id: Any, params: dict[str, Any]) -> dict[str, Any]:
@@ -315,9 +356,13 @@ class MinimalMCPServer:
                 result = self.service.list_sessions()
             elif name == "close_session":
                 result = self.service.close_session(**arguments)
-            else:
+            elif name == "save_plan":
                 path = self.service.save_plan(**arguments)
                 result = {"path": str(path)}
+            elif name == "set_brainstorm_preferences":
+                result = self.service.set_brainstorm_preferences(**arguments)
+            else:
+                result = self.service.get_brainstorm_preferences(**arguments)
         except Exception as exc:
             return self._result(
                 request_id,
@@ -347,13 +392,28 @@ class MinimalMCPServer:
             return f"Found {len(result.get('sessions', []))} sessions."
         if name == "close_session":
             return f"Closed session {result.get('session_id')}."
-        return f"Saved plan to {result.get('path')}."
+        if name == "save_plan":
+            return f"Saved plan to {result.get('path')}."
+        if name in {"set_brainstorm_preferences", "get_brainstorm_preferences"}:
+            values = (result or {}).get("values") or {}
+            populated = {k: v for k, v in values.items() if v}
+            if not populated:
+                return "No brainstorm preferences set."
+            summary = ", ".join(f"{k}={v}" for k, v in populated.items())
+            return f"Brainstorm preferences: {summary}."
+        return ""
 
     def _tool_definitions(self) -> list[dict[str, Any]]:
         return [
             {
                 "name": "start_brainstorm_session",
-                "description": "Start an interactive brainstorming UI session and return the session URL.",
+                "description": (
+                    "Start an interactive brainstorming UI session and return the session URL. "
+                    "The response also includes the user's effective brainstorm preferences "
+                    "(uiux_level, uiux_style, questioning_style) — honor them when authoring "
+                    "the session content. Call get_brainstorm_preferences first if you need them "
+                    "before generating content."
+                ),
                 "inputSchema": {
                     "type": "object",
                     "properties": {
@@ -441,6 +501,71 @@ class MinimalMCPServer:
                     "required": ["session_id"],
                     "additionalProperties": False,
                 },
+            },
+            {
+                "name": "set_brainstorm_preferences",
+                "description": (
+                    "Persist the user's brainstorming preferences. Use scope='global' for "
+                    "machine-wide defaults, or scope='project' with project_path to override "
+                    "them for one project (project_path is keyed by absolute path; configs "
+                    "are stored centrally under the brainstorm data root, never in the "
+                    "project repo). Any field left null is preserved from the prior value. "
+                    "Returns the merged effective preferences with their source."
+                ),
+                "inputSchema": {
+                    "type": "object",
+                    "properties": {
+                        "scope": {"type": "string", "enum": ["global", "project"]},
+                        "project_path": {
+                            "type": "string",
+                            "description": "Absolute project path. Required when scope='project'.",
+                        },
+                        "uiux_level": {
+                            "type": "string",
+                            "description": (
+                                "User's UI/UX skill level (free text). Suggested values: "
+                                "'never_before', 'amateur', 'intermediate', 'expert'."
+                            ),
+                        },
+                        "uiux_style": {
+                            "type": "string",
+                            "description": (
+                                "Project's UI/UX style (free text). Examples: 'corporate "
+                                "internal tool', 'marketing-heavy landing page', 'children "
+                                "education app'."
+                            ),
+                        },
+                        "questioning_style": {
+                            "type": "string",
+                            "description": (
+                                "How the AI should question the user when brainstorming. "
+                                "Suggested values: 'autonomous_review' (AI builds, user "
+                                "reviews with as few questions as possible), "
+                                "'collaborative_stepwise' (AI brainstorms step by step with "
+                                "the user, asking many questions to converge on the imagined "
+                                "UI), or any free-text variant."
+                            ),
+                        },
+                    },
+                    "required": ["scope"],
+                    "additionalProperties": False,
+                },
+            },
+            {
+                "name": "get_brainstorm_preferences",
+                "description": (
+                    "Read the effective brainstorm preferences (project overrides global, "
+                    "field by field). Pass project_path to merge a specific project's "
+                    "overrides; omit it to read the global preferences only."
+                ),
+                "inputSchema": {
+                    "type": "object",
+                    "properties": {
+                        "project_path": {"type": "string"},
+                    },
+                    "additionalProperties": False,
+                },
+                "annotations": {"readOnlyHint": True},
             },
         ]
 

@@ -51,6 +51,18 @@ class Settings:
     def plans_dir(self) -> Path:
         return self.data_root / "plans"
 
+    @property
+    def preferences_dir(self) -> Path:
+        return self.data_root / "preferences"
+
+    @property
+    def project_preferences_dir(self) -> Path:
+        return self.preferences_dir / "projects"
+
+    @property
+    def global_preferences_path(self) -> Path:
+        return self.preferences_dir / "global.json"
+
 
 def get_settings() -> Settings:
     return Settings()

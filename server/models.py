@@ -115,9 +115,37 @@ class StartSessionOutput(BaseModel):
     url: str
     port: int
     status: SessionStatus
+    preferences: Optional["EffectivePreferences"] = None
 
 
 class GetSessionResponseOutput(BaseModel):
     status: SessionStatus
     timestamp: Optional[datetime] = None
     response: Optional[SessionResponse] = None
+
+
+class PreferenceScope(str, Enum):
+    global_ = "global"
+    project = "project"
+
+
+class BrainstormPreferences(BaseModel):
+    uiux_level: Optional[str] = None
+    uiux_style: Optional[str] = None
+    questioning_style: Optional[str] = None
+
+
+class PreferenceSources(BaseModel):
+    uiux_level: Optional[PreferenceScope] = None
+    uiux_style: Optional[PreferenceScope] = None
+    questioning_style: Optional[PreferenceScope] = None
+
+
+class EffectivePreferences(BaseModel):
+    values: BrainstormPreferences
+    sources: PreferenceSources
+    project_key: Optional[str] = None
+    project_path: Optional[str] = None
+
+
+StartSessionOutput.model_rebuild()
