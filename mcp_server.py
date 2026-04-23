@@ -67,6 +67,7 @@ class BrainstormService:
         working_dir: Optional[str] = None,
         title: Optional[str] = None,
         options: Optional[list[Union[str, dict[str, Any]]]] = None,
+        questions: Optional[list[str]] = None,
         metadata: Optional[dict[str, Any]] = None,
     ) -> dict[str, Any]:
         handle = self.ensure_server_running()
@@ -82,6 +83,7 @@ class BrainstormService:
                 title=title,
                 working_dir=working_dir,
                 options=parsed_options,
+                questions=questions or [],
                 metadata={
                     **(metadata or {}),
                     "access_token": secrets.token_urlsafe(24),
@@ -358,11 +360,16 @@ class MinimalMCPServer:
                         "prompt": {"type": "string"},
                         "content_type": {
                             "type": "string",
-                            "enum": ["mermaid", "html", "markdown"],
+                            "enum": ["mermaid", "html", "markdown", "wireframe"],
                         },
                         "content": {"type": "string"},
                         "working_dir": {"type": "string"},
                         "title": {"type": "string"},
+                        "questions": {
+                            "type": "array",
+                            "items": {"type": "string"},
+                            "description": "Open questions shown as a dedicated list in the feedback drawer.",
+                        },
                         "options": {
                             "type": "array",
                             "items": {

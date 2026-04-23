@@ -37,6 +37,25 @@ def test_render_mermaid() -> None:
     assert rendered.section_ids == ["diagram-1"]
 
 
+def test_render_wireframe_inlines_and_strips_scripts() -> None:
+    renderer = ContentRenderer()
+    session = BrainstormSession(
+        content=SessionContent(
+            prompt="Prompt",
+            body='<div id="hero" onclick="alert(1)"><script>evil()</script><h1>Hi</h1></div>',
+            content_type="wireframe",
+        )
+    )
+
+    rendered = renderer.render(session)
+
+    assert "wireframe-stage" in rendered.html
+    assert "<script>" not in rendered.html.lower()
+    assert "onclick" not in rendered.html.lower()
+    assert "<h1>Hi</h1>" in rendered.html
+    assert "hero" in rendered.section_ids
+
+
 def test_render_html_uses_sandboxed_iframe() -> None:
     renderer = ContentRenderer()
     session = BrainstormSession(

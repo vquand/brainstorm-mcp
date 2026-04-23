@@ -65,6 +65,67 @@ def test_session_page_and_submit_flow(tmp_path: Path) -> None:
     assert session_payload.json()["response"]["comments"][0]["text"] == "Keep it simple"
 
 
+def test_wireframe_session_includes_questions(tmp_path: Path) -> None:
+    app, store = make_app(tmp_path)
+    session = store.create_session(
+        StartSessionInput(
+            prompt="Draft the toddler space page",
+            content_type="wireframe",
+            content='<div id="stage"><h1>Hi</h1></div>',
+            questions=[
+                "Should the rocket auto-launch or need taps?",
+                "Keep the meteor pit as its own scene?",
+            ],
+        )
+    )
+    token = session.metadata["access_token"]
+    client = make_client(app)
+    page = client.get(f"/{session.session_id}?token={token}")
+    assert page.status_code == 200
+    assert "Open questions" in page.text
+    assert "Should the rocket auto-launch" in page.text
+    assert "wireframe-stage" in page.text
+
+
+def test_submit_persists_comment_target(tmp_path: Path) -> None:
+    app, store = make_app(tmp_path)
+    session = store.create_session(
+        StartSessionInput(
+            prompt="Plan it",
+            content_type="markdown",
+            content="# Section\n\n- item",
+        )
+    )
+    token = session.metadata["access_token"]
+    client = make_client(app)
+    client.cookies.set(f"brainstorm_session_{session.session_id}", token)
+
+    submit = client.post(
+        f"/api/sessions/{session.session_id}/submit",
+        json={
+            "selections": [],
+            "comments": [
+                {
+                    "section_id": "section",
+                    "text": "Too wide",
+                    "target": {
+                        "selector": "section#section > ul > li:nth-of-type(1)",
+                        "tag": "li",
+                        "snippet": "item",
+                    },
+                }
+            ],
+            "images": [],
+        },
+    )
+    assert submit.status_code == 200
+
+    payload = client.get(f"/api/sessions/{session.session_id}").json()
+    comment = payload["response"]["comments"][0]
+    assert comment["target"]["tag"] == "li"
+    assert comment["target"]["snippet"] == "item"
+
+
 def test_list_sessions_requires_admin_token(tmp_path: Path) -> None:
     app, store = make_app(tmp_path)
     store.create_session(StartSessionInput(prompt="Plan it", content_type="markdown"))

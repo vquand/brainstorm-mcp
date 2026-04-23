@@ -58,6 +58,7 @@ class SessionStore:
                 content_type=payload.content_type,
                 title=payload.title,
                 options=options,
+                questions=list(payload.questions),
             ),
             metadata={
                 **payload.metadata,
